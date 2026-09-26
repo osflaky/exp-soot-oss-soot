@@ -1,0 +1,411 @@
+/*-
+ * #%L
+ * Soot - a J*va Optimization Framework
+ * %%
+ * Copyright (C) 2000 Patrice Pominville
+ * Copyright (C) 2004 Ondrej Lhotak, Ganesh Sittampalam
+ * %%
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as
+ * published by the Free Software Foundation, either version 2.1 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Lesser Public License for more details.
+ *
+ * You should have received a copy of the GNU General Lesser Public
+ * License along with this program.  If not, see
+ * <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ * #L%
+ */
+
+package soot;
+
+import com.google.common.base.Joiner;
+
+import java.io.File;
+import java.util.Collection;
+import java.util.Deque;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedDeque;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import soot.options.Options;
+import soot.util.ConcurrentHashMultiMap;
+import soot.util.MultiMap;
+
+/** Loads symbols for SootClasses from either class files or jimple files. */
+public class SootResolver {
+  private static final Logger logger = LoggerFactory.getLogger(SootResolver.class);
+
+  /** Maps each resolved class to a list of all references in it. */
+  protected MultiMap<SootClass, Type> classToTypesSignature = new ConcurrentHashMultiMap<SootClass, Type>();
+
+  /** Maps each resolved class to a list of all references in it. */
+  protected MultiMap<SootClass, Type> classToTypesHierarchy = new ConcurrentHashMultiMap<SootClass, Type>();
+
+  /** SootClasses waiting to be resolved. */
+  @SuppressWarnings("unchecked")
+  private final Deque<SootClass>[] worklist = new Deque[4];
+
+  public SootResolver(Singletons.Global g) {
+    worklist[SootClass.HIERARCHY] = new ConcurrentLinkedDeque<SootClass>();
+    worklist[SootClass.SIGNATURES] = new ConcurrentLinkedDeque<SootClass>();
+    worklist[SootClass.BODIES] = new ConcurrentLinkedDeque<SootClass>();
+  }
+
+  public static SootResolver v() {
+    G g = G.v();
+    if (g.soot_ModuleUtil().isInModuleMode()) {
+      return g.soot_SootModuleResolver();
+    } else {
+      return g.soot_SootResolver();
+    }
+  }
+
+  /** Returns true if we are resolving all class refs recursively. */
+  protected boolean resolveEverything() {
+    final Options opts = Options.v();
+    if (opts.on_the_fly()) {
+      return false;
+    } else {
+      return (opts.whole_program() || opts.whole_shimple() || opts.full_resolver());
+    }
+  }
+
+  /**
+   * Returns a (possibly not yet resolved) SootClass to be used in references to a class. If/when the class is resolved, it
+   * will be resolved into this SootClass.
+   */
+  public SootClass makeClassRef(String className) {
+    if (className.length() == 0) {
+      throw new RuntimeException("Classname must not be empty!");
+    }
+    final Scene scene = Scene.v();
+    if (scene.containsClass(className)) {
+      return scene.getSootClass(className);
+    } else {
+      SootClass newClass;
+      if (className.endsWith(SootModuleInfo.MODULE_INFO)) {
+        newClass = new SootModuleInfo(className, null);
+      } else {
+        newClass = new SootClass(className);
+      }
+      newClass.setResolvingLevel(SootClass.DANGLING);
+      scene.addClass(newClass);
+      return newClass;
+    }
+  }
+
+  /**
+   * Resolves the given class. Depending on the resolver settings, may decide to resolve other classes as well. If the class
+   * has already been resolved, just returns the class that was already resolved.
+   */
+  public SootClass resolveClass(String className, int desiredLevel) {
+    SootClass resolvedClass = null;
+    try {
+      resolvedClass = makeClassRef(className);
+      addToResolveWorklist(resolvedClass, desiredLevel);
+      processResolveWorklist();
+      return resolvedClass;
+    } catch (SootClassNotFoundException e) {
+      // remove unresolved class and rethrow
+      if (resolvedClass != null) {
+        assert (resolvedClass.resolvingLevel() == SootClass.DANGLING);
+        Scene.v().removeClass(resolvedClass);
+      }
+      throw e;
+    }
+  }
+
+  /** Resolve all classes on toResolveWorklist. */
+  protected synchronized void processResolveWorklist() {
+    final Scene scene = Scene.v();
+    final boolean resolveEverything = resolveEverything();
+    final boolean no_bodies_for_excluded = Options.v().no_bodies_for_excluded();
+    for (int i = SootClass.BODIES; i >= SootClass.HIERARCHY; i--) {
+      Deque<SootClass> currWorklist = worklist[i];
+      while (true) {
+        SootClass sc = currWorklist.pollFirst();
+        if (sc == null) {
+          break;
+        }
+        if (resolveEverything) {
+          // Whole program mode
+          boolean onlySignatures
+              = sc.isPhantom() || (no_bodies_for_excluded && scene.isExcluded(sc) && !scene.isBasicClass(sc.getName()));
+          if (onlySignatures) {
+            bringToSignatures(sc);
+            sc.setPhantomClass();
+            for (SootMethod m : sc.getMethods()) {
+              m.setPhantom(true);
+            }
+            for (SootField f : sc.getFields()) {
+              f.setPhantom(true);
+            }
+          } else {
+            bringToBodies(sc);
+          }
+        } else { // No transitive
+          switch (i) {
+            case SootClass.BODIES:
+              bringToBodies(sc);
+              break;
+            case SootClass.SIGNATURES:
+              bringToSignatures(sc);
+              break;
+            case SootClass.HIERARCHY:
+              bringToHierarchy(sc);
+              break;
+          }
+        }
+      }
+    }
+  }
+
+  protected void addToResolveWorklist(Type type, int level) {
+    // We go from Type -> SootClass directly, since RefType.getSootClass
+    // calls makeClassRef anyway
+    if (type instanceof RefType) {
+      addToResolveWorklist(((RefType) type).getSootClass(), level);
+    } else if (type instanceof ArrayType) {
+      addToResolveWorklist(((ArrayType) type).baseType, level);
+    }
+    // Other types ignored
+  }
+
+  protected void addToResolveWorklist(SootClass sc, int desiredLevel) {
+    if (sc.resolvingLevel() >= desiredLevel) {
+      return;
+    }
+    worklist[desiredLevel].add(sc);
+  }
+
+  /**
+   * Hierarchy - we know the hierarchy of the class and that's it requires at least Hierarchy for all supertypes and
+   * enclosing types.
+   */
+  protected void bringToHierarchy(SootClass sc) {
+    if (sc.resolvingLevel() >= SootClass.HIERARCHY) {
+      return;
+    }
+    if (Options.v().debug_resolver()) {
+      logger.debug("bringing to HIERARCHY: " + sc);
+    }
+    sc.setResolvingLevel(SootClass.HIERARCHY);
+
+    bringToHierarchyUnchecked(sc);
+  }
+
+  protected void bringToHierarchyUnchecked(SootClass sc) {
+    String className = sc.getName();
+    ClassSource is;
+    if (ModuleUtil.module_mode()) {
+      is = ModulePathSourceLocator.v().getClassSource(className,
+          com.google.common.base.Optional.fromNullable(sc.moduleName));
+    } else {
+      is = SourceLocator.v().getClassSource(className);
+    }
+    try {
+      boolean modelAsPhantomRef = (is == null);
+      if (modelAsPhantomRef) {
+        if (!Scene.v().allowsPhantomRefs()) {
+          String separator = File.pathSeparator;
+          String suffix = "";
+          if (Scene.isUsingJava()) {
+            String start = "";
+            if (!Options.v().soot_classpath().isEmpty()) {
+              start = Options.v().soot_classpath() + separator;
+            }
+            if ("java.lang.Object".equals(className)) {
+              suffix = "\nTry adding the Java runtime (rt.jar) to Soot's classpath, e.g.:\n" + start
+                  + "/path/to/jdk/jre/lib/rt.jar";
+            } else if ("javax.crypto.Cipher".equals(className)) {
+              suffix = "\nTry adding jce.jar to Soot's classpath, e.g.:\n" + start + "/path/to/jdk/jre/lib/rt.jar"
+                  + separator + "/path/to/jdk/jre/lib/jce.jar";
+            }
+          }
+          if (!Scene.isUsingAndroid() && Scene.isUsingJava() && !Options.v().prepend_classpath()
+          // for java.* classes, we are relatively certain that these are probably part of the core JRE
+              && className.startsWith("java.")) {
+            suffix += "\nAlternatively, you can use the --prepend-classpath option to"
+                + " let Soot utilize the Java runtime of the current JVM, which is Java "
+                + System.getProperty("java.version");
+          }
+          List<String> possibleInputs = new LinkedList<>();
+          if (Scene.isUsingJava()) {
+            possibleInputs.add("JAR file/class folder");
+          }
+          if (Scene.isUsingAndroid()) {
+            possibleInputs.add("APK/DEX file");
+          }
+          if (Scene.isUsingDotNet()) {
+            possibleInputs.add(".NET CIL DLL or executable (.exe) file");
+          }
+          String classPathSuggestion
+              = "Add the " + Joiner.on(", ").join(possibleInputs) + " containing the class to the soot class path. ";
+          String phantomRefsSuggestion;
+          if (Main.usedAsCommandLineApp) {
+            classPathSuggestion += "Use the command line argument -cp for that.";
+            phantomRefsSuggestion = "Use the command line argument --allow-phantom-refs for that.";
+          } else {
+            classPathSuggestion += "Since you seem to use Soot as a library, use Options.v().set_soot_classpath.";
+            phantomRefsSuggestion = "Use Options.v().set_allow_phantom_refs(true);";
+          }
+          throw new SootClassNotFoundException(
+              "Couldn't find class " + className + ".\nYou've got two options: \nEither specify Soot's classpath correctly: "
+                  + classPathSuggestion + "\nThe soot class path should contain all files that contain classes/bytecode"
+                  + " the application depends on. Each file should be separated by " + separator + ", e.g. \"File1"
+                  + separator + "File2\"" + suffix + "\nAlternatively, you can instruct soot to use phantom references. "
+                  + "This causes Soot to treat missing classes as placeholders,\n"
+                  + "which can be useful if the origin of the missing classes is "
+                  + "unknown or if the application would run even with these missing classes."
+                  + "Note that this may cause some analyses to fail." + "\nEnable phantom references like this: "
+                  + phantomRefsSuggestion);
+        } else {
+          // logger.warn(className + " is a phantom class!");
+          sc.setPhantomClass();
+        }
+      } else {
+        Dependencies dependencies = is.resolve(sc);
+        if (!dependencies.typesToSignature.isEmpty()) {
+          classToTypesSignature.putAll(sc, dependencies.typesToSignature);
+        }
+        if (!dependencies.typesToHierarchy.isEmpty()) {
+          classToTypesHierarchy.putAll(sc, dependencies.typesToHierarchy);
+        }
+      }
+    } finally {
+      if (is != null) {
+        is.close();
+      }
+    }
+    reResolveHierarchy(sc, SootClass.HIERARCHY);
+  }
+
+  public void reResolveHierarchy(SootClass sc, int level) {
+    // Bring superclasses to hierarchy
+    SootClass superClass = sc.getSuperclassUnsafe();
+    if (superClass != null) {
+      addToResolveWorklist(superClass, level);
+    }
+    SootClass outerClass = sc.getOuterClassUnsafe();
+    if (outerClass != null) {
+      addToResolveWorklist(outerClass, level);
+    }
+    for (SootClass iface : sc.getInterfaces()) {
+      addToResolveWorklist(iface, level);
+    }
+  }
+
+  /**
+   * Signatures - we know the signatures of all methods and fields requires at least Hierarchy for all referred to types in
+   * these signatures.
+   */
+  protected void bringToSignatures(SootClass sc) {
+    if (sc.resolvingLevel() >= SootClass.SIGNATURES) {
+      return;
+    }
+    bringToHierarchy(sc);
+    if (Options.v().debug_resolver()) {
+      logger.debug("bringing to SIGNATURES: " + sc);
+    }
+    sc.setResolvingLevel(SootClass.SIGNATURES);
+
+    bringToSignaturesUnchecked(sc);
+  }
+
+  protected void bringToSignaturesUnchecked(SootClass sc) {
+    for (SootField f : sc.getFields()) {
+      addToResolveWorklist(f.getType(), SootClass.HIERARCHY);
+    }
+    for (SootMethod m : sc.getMethods()) {
+      addToResolveWorklist(m.getReturnType(), SootClass.HIERARCHY);
+      for (Type ptype : m.getParameterTypes()) {
+        addToResolveWorklist(ptype, SootClass.HIERARCHY);
+      }
+      List<SootClass> exceptions = m.getExceptionsUnsafe();
+      if (exceptions != null) {
+        for (SootClass exception : exceptions) {
+          addToResolveWorklist(exception, SootClass.HIERARCHY);
+        }
+      }
+    }
+
+    // Bring superclasses to signatures
+    reResolveHierarchy(sc, SootClass.SIGNATURES);
+  }
+
+  /**
+   * Bodies - we can now start loading the bodies of methods for all referred to methods and fields in the bodies, requires
+   * signatures for the method receiver and field container, and hierarchy for all other classes referenced in method
+   * references. Current implementation does not distinguish between the receiver and other references. Therefore, it is
+   * conservative and brings all of them to signatures. But this could/should be improved.
+   */
+  protected void bringToBodies(SootClass sc) {
+    if (sc.resolvingLevel() >= SootClass.BODIES) {
+      return;
+    }
+    bringToSignatures(sc);
+    if (Options.v().debug_resolver()) {
+      logger.debug("bringing to BODIES: " + sc);
+    }
+    sc.setResolvingLevel(SootClass.BODIES);
+
+    bringToBodiesUnchecked(sc);
+  }
+
+  protected void bringToBodiesUnchecked(SootClass sc) {
+    {
+      Collection<Type> references = classToTypesHierarchy.get(sc);
+      if (references != null) {
+        // This must be an iterator, not a for-all since the underlying
+        // collection may change as we go
+        for (Type t : references) {
+          addToResolveWorklist(t, SootClass.HIERARCHY);
+        }
+      }
+    }
+    {
+      Collection<Type> references = classToTypesSignature.get(sc);
+      if (references != null) {
+        // This must be an iterator, not a for-all since the underlying
+        // collection may change as we go
+        for (Type t : references) {
+          addToResolveWorklist(t, SootClass.SIGNATURES);
+        }
+      }
+    }
+  }
+
+  public void reResolve(SootClass cl, int newResolvingLevel) {
+    int resolvingLevel = cl.resolvingLevel();
+    if (resolvingLevel >= newResolvingLevel) {
+      return;
+    }
+    reResolveHierarchy(cl, SootClass.HIERARCHY);
+    cl.setResolvingLevel(newResolvingLevel);
+    addToResolveWorklist(cl, resolvingLevel);
+    processResolveWorklist();
+  }
+
+  public void reResolve(SootClass cl) {
+    reResolve(cl, SootClass.HIERARCHY);
+  }
+
+  public class SootClassNotFoundException extends UserInputException {
+    /**
+     *
+     */
+    private static final long serialVersionUID = 1563461446590293827L;
+
+    public SootClassNotFoundException(String s) {
+      super(s);
+    }
+  }
+}

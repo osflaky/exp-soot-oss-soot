@@ -1,0 +1,2056 @@
+package soot.jimple.parser;
+
+/*-
+ * #%L
+ * Soot - a J*va Optimization Framework
+ * %%
+ * Copyright (C) 2000 Patrice Pominville
+ * %%
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as
+ * published by the Free Software Foundation, either version 2.1 of the
+ * License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Lesser Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Lesser Public
+ * License along with this program.  If not, see
+ * <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ * #L%
+ */
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import soot.AbstractSootFieldRef;
+import soot.ArrayType;
+import soot.BooleanConstant;
+import soot.BooleanType;
+import soot.ByteConstant;
+import soot.ByteType;
+import soot.CharConstant;
+import soot.CharType;
+import soot.DoubleType;
+import soot.FloatType;
+import soot.Immediate;
+import soot.IntType;
+import soot.Local;
+import soot.LongType;
+import soot.Modifier;
+import soot.NullType;
+import soot.RefType;
+import soot.Scene;
+import soot.ShortConstant;
+import soot.ShortType;
+import soot.SootClass;
+import soot.SootField;
+import soot.SootFieldRef;
+import soot.SootMethod;
+import soot.SootMethodRef;
+import soot.SootResolver;
+import soot.Trap;
+import soot.Type;
+import soot.Unit;
+import soot.UnitBox;
+import soot.UnknownType;
+import soot.Value;
+import soot.VoidType;
+import soot.jimple.BinopExpr;
+import soot.jimple.ClassConstant;
+import soot.jimple.Constant;
+import soot.jimple.DoubleConstant;
+import soot.jimple.Expr;
+import soot.jimple.FloatConstant;
+import soot.jimple.IntConstant;
+import soot.jimple.Jimple;
+import soot.jimple.JimpleBody;
+import soot.jimple.LongConstant;
+import soot.jimple.MethodHandle;
+import soot.jimple.MethodHandle.Kind;
+import soot.jimple.NullConstant;
+import soot.jimple.Stmt;
+import soot.jimple.StringConstant;
+import soot.jimple.UnopExpr;
+import soot.jimple.parser.analysis.DepthFirstAdapter;
+import soot.jimple.parser.node.AAbstractModifier;
+import soot.jimple.parser.node.AAndBinop;
+import soot.jimple.parser.node.AAnnotationAnnotationValue;
+import soot.jimple.parser.node.AAnnotationBlockAnnotationValue;
+import soot.jimple.parser.node.AAnnotationModifier;
+import soot.jimple.parser.node.AAnnotationparamsAnnotationParams;
+import soot.jimple.parser.node.AArrayDescriptor;
+import soot.jimple.parser.node.AArrayNewExpr;
+import soot.jimple.parser.node.AArrayReference;
+import soot.jimple.parser.node.AAssignStatement;
+import soot.jimple.parser.node.ABaseNonvoidType;
+import soot.jimple.parser.node.ABinopBoolExpr;
+import soot.jimple.parser.node.ABinopExpr;
+import soot.jimple.parser.node.ABoolFalseConstant;
+import soot.jimple.parser.node.ABoolTrueConstant;
+import soot.jimple.parser.node.ABooleanBaseType;
+import soot.jimple.parser.node.ABooleanBaseTypeNoName;
+import soot.jimple.parser.node.ABreakpointStatement;
+import soot.jimple.parser.node.AByteBaseType;
+import soot.jimple.parser.node.AByteBaseTypeNoName;
+import soot.jimple.parser.node.ACaseStmt;
+import soot.jimple.parser.node.ACastExpression;
+import soot.jimple.parser.node.ACatchClause;
+import soot.jimple.parser.node.ACharBaseType;
+import soot.jimple.parser.node.ACharBaseTypeNoName;
+import soot.jimple.parser.node.AClassAnnotationDefinedAnnotation;
+import soot.jimple.parser.node.AClassFileType;
+import soot.jimple.parser.node.AClassNameBaseType;
+import soot.jimple.parser.node.AClassNameMultiClassNameList;
+import soot.jimple.parser.node.AClassNameSingleClassNameList;
+import soot.jimple.parser.node.AClzzConstant;
+import soot.jimple.parser.node.ACmpBinop;
+import soot.jimple.parser.node.ACmpeqBinop;
+import soot.jimple.parser.node.ACmpgBinop;
+import soot.jimple.parser.node.ACmpgeBinop;
+import soot.jimple.parser.node.ACmpgtBinop;
+import soot.jimple.parser.node.ACmplBinop;
+import soot.jimple.parser.node.ACmpleBinop;
+import soot.jimple.parser.node.ACmpltBinop;
+import soot.jimple.parser.node.ACmpneBinop;
+import soot.jimple.parser.node.AConstantCaseLabel;
+import soot.jimple.parser.node.ADeclaration;
+import soot.jimple.parser.node.ADefaultAnnotationDefinedAnnotation;
+import soot.jimple.parser.node.ADeprecatedAnnotationDefinedAnnotation;
+import soot.jimple.parser.node.ADivBinop;
+import soot.jimple.parser.node.ADoubleBaseType;
+import soot.jimple.parser.node.ADoubleBaseTypeNoName;
+import soot.jimple.parser.node.ADynamicInvokeExpr;
+import soot.jimple.parser.node.AEntermonitorStatement;
+import soot.jimple.parser.node.AEnumModifier;
+import soot.jimple.parser.node.AExitmonitorStatement;
+import soot.jimple.parser.node.AFieldAnnotationValue;
+import soot.jimple.parser.node.AFieldMember;
+import soot.jimple.parser.node.AFieldSignature;
+import soot.jimple.parser.node.AFile;
+import soot.jimple.parser.node.AFinalModifier;
+import soot.jimple.parser.node.AFloatBaseType;
+import soot.jimple.parser.node.AFloatBaseTypeNoName;
+import soot.jimple.parser.node.AFloatConstant;
+import soot.jimple.parser.node.AFullIdentNonvoidType;
+import soot.jimple.parser.node.AFullMethodBody;
+import soot.jimple.parser.node.AGotoStatement;
+import soot.jimple.parser.node.AIdentNonvoidType;
+import soot.jimple.parser.node.AIdentityNoTypeStatement;
+import soot.jimple.parser.node.AIdentityStatement;
+import soot.jimple.parser.node.AIfStatement;
+import soot.jimple.parser.node.AInnerclassAnnotationDefinedAnnotation;
+import soot.jimple.parser.node.AInstanceofExpression;
+import soot.jimple.parser.node.AIntBaseType;
+import soot.jimple.parser.node.AIntBaseTypeNoName;
+import soot.jimple.parser.node.AIntegerConstant;
+import soot.jimple.parser.node.AInterfaceFileType;
+import soot.jimple.parser.node.AInterfaceNonstaticInvoke;
+import soot.jimple.parser.node.AInvokeStatement;
+import soot.jimple.parser.node.ALabelStatement;
+import soot.jimple.parser.node.ALengthofUnop;
+import soot.jimple.parser.node.ALocalFieldRef;
+import soot.jimple.parser.node.ALocalImmediate;
+import soot.jimple.parser.node.ALocalVariable;
+import soot.jimple.parser.node.ALongBaseType;
+import soot.jimple.parser.node.ALongBaseTypeNoName;
+import soot.jimple.parser.node.ALookupswitchStatement;
+import soot.jimple.parser.node.AMethodMember;
+import soot.jimple.parser.node.AMethodSignature;
+import soot.jimple.parser.node.AMethodhandlefieldConstant;
+import soot.jimple.parser.node.AMethodhandlemethodConstant;
+import soot.jimple.parser.node.AMinusBinop;
+import soot.jimple.parser.node.AModBinop;
+import soot.jimple.parser.node.AMultBinop;
+import soot.jimple.parser.node.AMultiAnnotationValuesList;
+import soot.jimple.parser.node.AMultiArgList;
+import soot.jimple.parser.node.AMultiLocalNameList;
+import soot.jimple.parser.node.AMultiNewExpr;
+import soot.jimple.parser.node.AMultiParameterList;
+import soot.jimple.parser.node.ANativeModifier;
+import soot.jimple.parser.node.ANegUnop;
+import soot.jimple.parser.node.ANonstaticInvokeExpr;
+import soot.jimple.parser.node.ANopStatement;
+import soot.jimple.parser.node.ANovoidType;
+import soot.jimple.parser.node.ANullBaseType;
+import soot.jimple.parser.node.ANullBaseTypeNoName;
+import soot.jimple.parser.node.ANullConstant;
+import soot.jimple.parser.node.AOrBinop;
+import soot.jimple.parser.node.APlusBinop;
+import soot.jimple.parser.node.APrivateModifier;
+import soot.jimple.parser.node.AProtectedModifier;
+import soot.jimple.parser.node.APublicModifier;
+import soot.jimple.parser.node.AQuotedName;
+import soot.jimple.parser.node.AQuotedNonvoidType;
+import soot.jimple.parser.node.ARetStatement;
+import soot.jimple.parser.node.AReturnStatement;
+import soot.jimple.parser.node.ASetConstantAnnotationValue;
+import soot.jimple.parser.node.AShlBinop;
+import soot.jimple.parser.node.AShortBaseType;
+import soot.jimple.parser.node.AShortBaseTypeNoName;
+import soot.jimple.parser.node.AShrBinop;
+import soot.jimple.parser.node.ASigFieldRef;
+import soot.jimple.parser.node.ASignatureAnnotationDefinedAnnotation;
+import soot.jimple.parser.node.ASimpleNewExpr;
+import soot.jimple.parser.node.ASingleAnnotationValuesList;
+import soot.jimple.parser.node.ASingleArgList;
+import soot.jimple.parser.node.ASingleLocalNameList;
+import soot.jimple.parser.node.ASingleParameterList;
+import soot.jimple.parser.node.ASpecialNonstaticInvoke;
+import soot.jimple.parser.node.AStaticInvokeExpr;
+import soot.jimple.parser.node.AStaticModifier;
+import soot.jimple.parser.node.AStrictfpModifier;
+import soot.jimple.parser.node.AStringConstant;
+import soot.jimple.parser.node.ASynchronizedModifier;
+import soot.jimple.parser.node.ATableswitchStatement;
+import soot.jimple.parser.node.AThrowStatement;
+import soot.jimple.parser.node.AThrowsClause;
+import soot.jimple.parser.node.ATransientModifier;
+import soot.jimple.parser.node.AUnknownJimpleType;
+import soot.jimple.parser.node.AUnnamedMethodSignature;
+import soot.jimple.parser.node.AUnopExpr;
+import soot.jimple.parser.node.AUnopExpression;
+import soot.jimple.parser.node.AUshrBinop;
+import soot.jimple.parser.node.AVirtualNonstaticInvoke;
+import soot.jimple.parser.node.AVisibilityDefinedAnnotation;
+import soot.jimple.parser.node.AVoidType;
+import soot.jimple.parser.node.AVolatileModifier;
+import soot.jimple.parser.node.AXorBinop;
+import soot.jimple.parser.node.Node;
+import soot.jimple.parser.node.PDefinedAnnotation;
+import soot.jimple.parser.node.PMethodSignature;
+import soot.jimple.parser.node.PModifier;
+import soot.jimple.parser.node.Start;
+import soot.jimple.parser.node.TAtIdentifier;
+import soot.jimple.parser.node.TFloatConstant;
+import soot.jimple.parser.node.TFullIdentifier;
+import soot.jimple.parser.node.TIdentifier;
+import soot.jimple.parser.node.TIntegerConstant;
+import soot.jimple.parser.node.TQuotedName;
+import soot.jimple.parser.node.TStringConstant;
+import soot.jimple.parser.node.Token;
+import soot.tagkit.AnnotationAnnotationElem;
+import soot.tagkit.AnnotationArrayElem;
+import soot.tagkit.AnnotationBooleanElem;
+import soot.tagkit.AnnotationClassElem;
+import soot.tagkit.AnnotationConstants;
+import soot.tagkit.AnnotationDefaultTag;
+import soot.tagkit.AnnotationDoubleElem;
+import soot.tagkit.AnnotationElem;
+import soot.tagkit.AnnotationEnumElem;
+import soot.tagkit.AnnotationFloatElem;
+import soot.tagkit.AnnotationIntElem;
+import soot.tagkit.AnnotationLongElem;
+import soot.tagkit.AnnotationStringElem;
+import soot.tagkit.AnnotationTag;
+import soot.tagkit.DeprecatedTag;
+import soot.tagkit.InnerClassTag;
+import soot.tagkit.SignatureTag;
+import soot.tagkit.Tag;
+import soot.tagkit.VisibilityAnnotationTag;
+import soot.util.StringTools;
+import soot.util.backend.ASMBackendUtils;
+
+/* Modified By Marc Berndl 17th May */
+
+public class Walker extends DepthFirstAdapter {
+  private static final Logger logger = LoggerFactory.getLogger(Walker.class);
+  boolean debug = false;
+  LinkedList mProductions = new LinkedList();
+  SootClass mSootClass = null;
+  Map<String, Local> mLocals = null;
+  Value mValue = IntConstant.v(1);
+
+  Map<Object, Unit> mLabelToStmtMap; // maps a label to the stmt following it
+  // in the jimple source
+  Map<String, List> mLabelToPatchList; // maps a label to the a list of stmts
+  // that refer to the label (ie goto
+  // lableX)
+
+  protected final SootResolver mResolver;
+
+  public Walker(SootResolver resolver) {
+    mResolver = resolver;
+    if (debug) {
+      mProductions = new LinkedList() {
+        @Override
+        public Object removeLast() {
+          Object o = super.removeLast();
+          if (debug) {
+            logger.debug("popped: " + o);
+          }
+          return o;
+        }
+      };
+    }
+  }
+
+  public Walker(SootClass sc, SootResolver resolver) {
+    mSootClass = sc;
+    mResolver = resolver;
+  }
+
+  @Override
+  public void outStart(Start node) {
+    SootClass c = (SootClass) mProductions.removeLast();
+  }
+
+  public SootClass getSootClass() {
+    if (mSootClass == null) {
+      throw new RuntimeException("did not parse class yet....");
+    }
+
+    return mSootClass;
+  }
+
+  /*
+   * file = modifier* file_type class_name extends_clause? implements_clause? file_body;
+   */
+  @Override
+  public void inAFile(AFile node) {
+    if (debug) {
+      logger.debug("reading class " + node.getClassName());
+    }
+  }
+
+  @Override
+  public void caseAFile(AFile node) {
+    inAFile(node);
+    {
+      Object temp[] = node.getModifier().toArray();
+      for (Object element : temp) {
+        ((PModifier) element).apply(this);
+      }
+    }
+    if (node.getFileType() != null) {
+      node.getFileType().apply(this);
+    }
+    if (node.getClassName() != null) {
+      node.getClassName().apply(this);
+    }
+
+    String className = (String) mProductions.removeLast();
+    List<Tag> tagList = processAnnotationTags(node.getDefinedAnnotation());
+
+    if (mSootClass == null) {
+      mSootClass = new SootClass(className);
+      mSootClass.setResolvingLevel(SootClass.BODIES);
+    } else {
+      if (!mSootClass.getName().equals(className)) {
+        throw new RuntimeException("Invalid SootClass for this JimpleAST. The SootClass provided is of type: >"
+            + mSootClass.getName() + "< whereas this parse tree is for type: >" + className + "<");
+      }
+    }
+    if (tagList != null) {
+      for (Tag tl : tagList) {
+        mSootClass.addTag(tl);
+      }
+    }
+
+    if (node.getExtendsClause() != null) {
+      node.getExtendsClause().apply(this);
+    }
+    if (node.getImplementsClause() != null) {
+      node.getImplementsClause().apply(this);
+    }
+    if (node.getFileBody() != null) {
+      node.getFileBody().apply(this);
+    }
+    outAFile(node);
+  }
+
+  @Override
+  public void outAAnnotationAnnotationValue(AAnnotationAnnotationValue node) {
+    AnnotationTag tag = (AnnotationTag) mProductions.removeLast();
+    String name = (String) mProductions.removeLast();
+    if (node.getName() instanceof AQuotedName && name.equals("generatedName")) {
+      // Remove the generated name only in case it is quoted, since user code might
+      // still use that name
+      name = null;
+    }
+    mProductions.addLast(new AnnotationAnnotationElem(tag, '@', name));
+  }
+
+  @Override
+  public void outASignatureAnnotationDefinedAnnotation(ASignatureAnnotationDefinedAnnotation node) {
+    List<AnnotationElem> elems = (List<AnnotationElem>) mProductions.removeLast();
+    for (AnnotationElem elem : elems) {
+      switch (elem.getName()) {
+        case "Value":
+          AnnotationStringElem ase = (AnnotationStringElem) elem;
+          mProductions.addLast(new SignatureTag(ase.getValue()));
+          break;
+        default:
+          throw new IllegalArgumentException("Not understood: " + elem.getName());
+      }
+    }
+  }
+
+  @Override
+  public void outASingleAnnotationValuesList(ASingleAnnotationValuesList node) {
+    List<AnnotationElem> l = new ArrayList<AnnotationElem>();
+    Object lst = mProductions.removeLast();
+    l.add((AnnotationElem) lst);
+    mProductions.addLast(l);
+  }
+
+  @Override
+  public void outAMultiAnnotationValuesList(AMultiAnnotationValuesList node) {
+    List<AnnotationElem> l = (List<AnnotationElem>) mProductions.removeLast();
+    l.add(0, (AnnotationElem) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  @Override
+  public void outAFieldAnnotationValue(AFieldAnnotationValue node) {
+    AbstractSootFieldRef constant = (AbstractSootFieldRef) mProductions.removeLast();
+    String name = (String) mProductions.removeLast();
+    final String enumName = ASMBackendUtils.getSignatureRefType(Scene.signatureToClass(constant.getSignature()));
+
+    String subsig = Scene.signatureToSubsignature(constant.getSignature());
+
+    if (node.getName() instanceof AQuotedName && name.equals("generatedName")) {
+      // Remove the generated name only in case it is quoted, since user code might
+      // still use that name
+      name = null;
+    }
+    mProductions.addLast(new AnnotationEnumElem(enumName, subsig.substring(subsig.indexOf(' ') + 1), 'e', name));
+  }
+
+  @Override
+  public void outASetConstantAnnotationValue(ASetConstantAnnotationValue node) {
+    Constant constant = (Constant) mProductions.removeLast();
+    String name = (String) mProductions.removeLast();
+
+    if (node.getName() instanceof AQuotedName && name.equals("generatedName")) {
+      // Remove the generated name only in case it is quoted, since user code might
+      // still use that name
+      name = null;
+    }
+    if (constant instanceof BooleanConstant) {
+      mProductions.addLast(new AnnotationBooleanElem(((BooleanConstant) constant).value == 1, 'Z', name));
+    } else if (constant instanceof CharConstant) {
+      mProductions.addLast(new AnnotationIntElem(((IntConstant) constant).value, 'C', name));
+    } else if (constant instanceof ShortConstant) {
+      mProductions.addLast(new AnnotationIntElem(((IntConstant) constant).value, 'S', name));
+    } else if (constant instanceof ByteConstant) {
+      mProductions.addLast(new AnnotationIntElem(((IntConstant) constant).value, 'B', name));
+    } else if (constant instanceof IntConstant) {
+      mProductions.addLast(new AnnotationIntElem(((IntConstant) constant).value, 'I', name));
+    } else if (constant instanceof LongConstant) {
+      mProductions.addLast(new AnnotationLongElem(((LongConstant) constant).value, 'J', name));
+    } else if (constant instanceof DoubleConstant) {
+      mProductions.addLast(new AnnotationDoubleElem(((DoubleConstant) constant).value, 'D', name));
+    } else if (constant instanceof FloatConstant) {
+      mProductions.addLast(new AnnotationFloatElem(((FloatConstant) constant).value, 'F', name));
+    } else if (constant instanceof StringConstant) {
+      mProductions.addLast(new AnnotationStringElem(((StringConstant) constant).value, 's', name));
+    } else if (constant instanceof ClassConstant) {
+      mProductions.addLast(new AnnotationClassElem(((ClassConstant) constant).value, 'c', name));
+    } else {
+      throw new RuntimeException("Not supported constant " + constant);
+    }
+
+  }
+
+  @Override
+  public void outAAnnotationBlockAnnotationValue(AAnnotationBlockAnnotationValue node) {
+    List<AnnotationElem> tags;
+    if (node.getList() != null) {
+      tags = (List<AnnotationElem>) this.mProductions.removeLast();
+    } else {
+      tags = new ArrayList<>();
+    }
+    String name = (String) this.mProductions.removeLast();
+    mProductions.addLast(new AnnotationArrayElem(tags, '[', name));
+  }
+
+  @Override
+  public void outAAnnotationparamsAnnotationParams(AAnnotationparamsAnnotationParams node) {
+    if (node.getAnnotationValuesList() == null) {
+      mProductions.addLast(new ArrayList<>());
+    }
+  }
+
+  @Override
+  public void outAInnerclassAnnotationDefinedAnnotation(AInnerclassAnnotationDefinedAnnotation node) {
+    List<AnnotationElem> r = (List<AnnotationElem>) this.mProductions.removeLast();
+    String innerClass = null, outerClass = null, name = null;
+    int accessFlags = -1;
+    for (AnnotationElem e : r) {
+      switch (e.getName()) {
+        case "InnerClass":
+          innerClass = ((AnnotationStringElem) e).getValue();
+          break;
+        case "OuterClass":
+          outerClass = ((AnnotationStringElem) e).getValue();
+          break;
+        case "Name":
+          name = ((AnnotationStringElem) e).getValue();
+          break;
+        case "AccessFlags":
+          accessFlags = ((AnnotationIntElem) e).getValue();
+          break;
+      }
+    }
+    if (accessFlags == -1) {
+      throw new IllegalStateException("Inner class annotation: Access flag missing");
+    }
+    mProductions.addLast(new InnerClassTag(innerClass, outerClass, name, accessFlags));
+  }
+
+  @Override
+  public void outADeprecatedAnnotationDefinedAnnotation(ADeprecatedAnnotationDefinedAnnotation node) {
+    mProductions.addLast(new DeprecatedTag());
+  }
+
+  @Override
+  public void outADefaultAnnotationDefinedAnnotation(ADefaultAnnotationDefinedAnnotation node) {
+    if (node.getAnnotationParams() == null) {
+      throw new IllegalStateException("Default annotation has no child");
+    }
+    List<AnnotationElem> params = (List<AnnotationElem>) mProductions.removeLast();
+    mProductions.addLast(new AnnotationDefaultTag(params.get(0)));
+  }
+
+  @Override
+  public void outAVisibilityDefinedAnnotation(AVisibilityDefinedAnnotation node) {
+    List<AnnotationElem> r = (List<AnnotationElem>) this.mProductions.removeLast();
+    List<AnnotationTag> res = new ArrayList<>();
+    int visibilityLevel = -1;
+    for (AnnotationElem e : r) {
+      switch (e.getName()) {
+        case "retention":
+          switch (((AnnotationStringElem) e).getValue()) {
+            case "CLASS":
+              visibilityLevel = AnnotationConstants.RUNTIME_INVISIBLE;
+              break;
+            case "SOURCE":
+              visibilityLevel = AnnotationConstants.SOURCE_VISIBLE;
+              break;
+            case "RUNTIME":
+              visibilityLevel = AnnotationConstants.RUNTIME_VISIBLE;
+              break;
+          }
+          break;
+        case "annotations":
+          final AnnotationArrayElem arrayElem = (AnnotationArrayElem) e;
+          for (AnnotationElem elem : arrayElem.getValues()) {
+            final AnnotationAnnotationElem innerAnnotation = (AnnotationAnnotationElem) elem;
+
+            res.add(innerAnnotation.getValue());
+          }
+
+      }
+    }
+    if (visibilityLevel == -1) {
+      throw new RuntimeException("Has not specified visibility level");
+    }
+    VisibilityAnnotationTag at = new VisibilityAnnotationTag(visibilityLevel);
+    for (AnnotationTag tag : res) {
+      at.addAnnotation(tag);
+    }
+    mProductions.addLast(at);
+  }
+
+  @Override
+  public void outAClassAnnotationDefinedAnnotation(AClassAnnotationDefinedAnnotation node) {
+    List<AnnotationElem> params = null;
+    if (node.getAnnotationParams() != null) {
+      params = (List<AnnotationElem>) mProductions.removeLast();
+    }
+    String className = (String) mProductions.removeLast();
+    final AnnotationTag annotationTag = new AnnotationTag(ASMBackendUtils.getSignatureRefType(className));
+    if (params != null) {
+      for (AnnotationElem p : params) {
+        annotationTag.addElem(p);
+      }
+    }
+    mProductions.addLast(annotationTag);
+  }
+
+  @Override
+  public void outAFile(AFile node) {
+    // not not pop members; they have been taken care of.
+    List implementsList = null;
+    String superClass = null;
+
+    String classType = null;
+
+    if (node.getImplementsClause() != null) {
+      implementsList = (List) mProductions.removeLast();
+    }
+    if (node.getExtendsClause() != null) {
+      superClass = (String) mProductions.removeLast();
+    }
+
+    classType = (String) mProductions.removeLast();
+
+    int modifierCount = node.getModifier().size();
+
+    int modifierFlags = processModifiers(node.getModifier());
+
+    if (classType.equals("interface")) {
+      modifierFlags |= Modifier.INTERFACE;
+    }
+
+    mSootClass.setModifiers(modifierFlags);
+
+    if (superClass != null) {
+      mSootClass.setSuperclass(mResolver.makeClassRef(superClass));
+    }
+
+    if (implementsList != null) {
+      Iterator implIt = implementsList.iterator();
+      while (implIt.hasNext()) {
+        SootClass interfaceClass = mResolver.makeClassRef((String) implIt.next());
+        mSootClass.addInterface(interfaceClass);
+      }
+    }
+
+    mProductions.addLast(mSootClass);
+  }
+
+  /*
+   * member = {field} modifier* type name semicolon | {method} modifier* type name l_paren parameter_list? r_paren
+   * throws_clause? method_body;
+   */
+  @Override
+  public void outAFieldMember(AFieldMember node) {
+    int modifier = 0;
+    Type type = null;
+    String name = null;
+
+    name = (String) mProductions.removeLast();
+    type = (Type) mProductions.removeLast();
+
+    List<Tag> tagList = processAnnotationTags(node.getDefinedAnnotation());
+    modifier = processModifiers(node.getModifier());
+
+    SootField f = Scene.v().makeSootField(name, type, modifier);
+    if (tagList != null) {
+      for (Tag tl : tagList) {
+        f.addTag(tl);
+      }
+    }
+    mSootClass.addField(f);
+  }
+
+  protected List<Tag> processAnnotationTags(LinkedList<PDefinedAnnotation> definedAnnotation) {
+    if (definedAnnotation == null || definedAnnotation.isEmpty()) {
+      return null;
+    }
+    List<Tag> tags = new ArrayList<>(definedAnnotation.size());
+    for (PDefinedAnnotation i : definedAnnotation) {
+      Tag tag = (Tag) mProductions.removeLast();
+      tags.add(tag);
+    }
+    return tags;
+  }
+
+  @Override
+  public void outAMethodMember(AMethodMember node) {
+    int modifier = 0;
+    Type type;
+    String name;
+    List parameterList = null;
+    List<SootClass> throwsClause = null;
+    JimpleBody methodBody = null;
+
+    if (node.getMethodBody() instanceof AFullMethodBody) {
+      methodBody = (JimpleBody) mProductions.removeLast();
+    }
+
+    if (node.getThrowsClause() != null) {
+      throwsClause = (List<SootClass>) mProductions.removeLast();
+    }
+
+    if (node.getParameterList() != null) {
+      parameterList = (List) mProductions.removeLast();
+    } else {
+      parameterList = new ArrayList();
+    }
+
+    Object o = mProductions.removeLast();
+
+    name = (String) o;
+    type = (Type) mProductions.removeLast();
+    List<Tag> tagList = processAnnotationTags(node.getDefinedAnnotation());
+    modifier = processModifiers(node.getModifier());
+
+    SootMethod method;
+
+    if (throwsClause != null) {
+      method = Scene.v().makeSootMethod(name, parameterList, type, modifier, throwsClause);
+    } else {
+      method = Scene.v().makeSootMethod(name, parameterList, type, modifier);
+    }
+    if (tagList != null) {
+      for (Tag tl : tagList) {
+        method.addTag(tl);
+      }
+    }
+
+    mSootClass.addMethod(method);
+
+    if (method.isConcrete()) {
+      methodBody.setMethod(method);
+      method.setActiveBody(methodBody);
+
+    } else if (node.getMethodBody() instanceof AFullMethodBody) {
+      throw new RuntimeException("Impossible: !concrete => ! instanceof");
+    }
+
+  }
+
+  /*
+   * type = {void} void | {novoid} nonvoid_type;
+   */
+
+  @Override
+  public void outAVoidType(AVoidType node) {
+    mProductions.addLast(VoidType.v());
+  }
+
+  /*
+   * nonvoid_type = {base} base_type_no_name array_brackets*; {quoted} quoted_name array_brackets* | {ident} identifier
+   * array_brackets* | {full_ident} full_identifier array_brackets*;
+   */
+  @Override
+  public void outABaseNonvoidType(ABaseNonvoidType node) {
+    Type t = (Type) mProductions.removeLast();
+    int dim = node.getArrayBrackets().size();
+    if (dim > 0) {
+      t = ArrayType.v(t, dim);
+    }
+    mProductions.addLast(t);
+  }
+
+  @Override
+  public void outAQuotedNonvoidType(AQuotedNonvoidType node) {
+    String typeName = (String) mProductions.removeLast();
+    Type t = RefType.v(typeName);
+
+    int dim = node.getArrayBrackets().size();
+    if (dim > 0) {
+      t = ArrayType.v(t, dim);
+    }
+    mProductions.addLast(t);
+  }
+
+  @Override
+  public void outAIdentNonvoidType(AIdentNonvoidType node) {
+    String typeName = (String) mProductions.removeLast();
+    Type t = RefType.v(typeName);
+    int dim = node.getArrayBrackets().size();
+    if (dim > 0) {
+      t = ArrayType.v(t, dim);
+    }
+    mProductions.addLast(t);
+  }
+
+  @Override
+  public void outAFullIdentNonvoidType(AFullIdentNonvoidType node) {
+    String typeName = (String) mProductions.removeLast();
+    Type t = RefType.v(typeName);
+    int dim = node.getArrayBrackets().size();
+    if (dim > 0) {
+      t = ArrayType.v(t, dim);
+    }
+    mProductions.addLast(t);
+  }
+
+  /*
+   * base_type_no_name = {boolean} boolean | {byte} byte | {char} char | {short} short | {int} int | {long} long | {float}
+   * float | {double} double | {null} null_type;
+   */
+
+  @Override
+  public void outABooleanBaseTypeNoName(ABooleanBaseTypeNoName node) {
+    mProductions.addLast(BooleanType.v());
+  }
+
+  @Override
+  public void outAByteBaseTypeNoName(AByteBaseTypeNoName node) {
+    mProductions.addLast(ByteType.v());
+  }
+
+  @Override
+  public void outACharBaseTypeNoName(ACharBaseTypeNoName node) {
+    mProductions.addLast(CharType.v());
+  }
+
+  @Override
+  public void outAShortBaseTypeNoName(AShortBaseTypeNoName node) {
+    mProductions.addLast(ShortType.v());
+  }
+
+  @Override
+  public void outAIntBaseTypeNoName(AIntBaseTypeNoName node) {
+    mProductions.addLast(IntType.v());
+  }
+
+  @Override
+  public void outALongBaseTypeNoName(ALongBaseTypeNoName node) {
+    mProductions.addLast(LongType.v());
+  }
+
+  @Override
+  public void outAFloatBaseTypeNoName(AFloatBaseTypeNoName node) {
+    mProductions.addLast(FloatType.v());
+  }
+
+  @Override
+  public void outADoubleBaseTypeNoName(ADoubleBaseTypeNoName node) {
+    mProductions.addLast(DoubleType.v());
+  }
+
+  @Override
+  public void outANullBaseTypeNoName(ANullBaseTypeNoName node) {
+    mProductions.addLast(NullType.v());
+  }
+
+  /*
+   * base_type = {boolean} boolean | {byte} byte | {char} char | {short} short | {int} int | {long} long | {float} float |
+   * {double} double | {null} null_type | {class_name} class_name;
+   */
+
+  @Override
+  public void outABooleanBaseType(ABooleanBaseType node) {
+    mProductions.addLast(BooleanType.v());
+  }
+
+  @Override
+  public void outAByteBaseType(AByteBaseType node) {
+    mProductions.addLast(ByteType.v());
+  }
+
+  @Override
+  public void outACharBaseType(ACharBaseType node) {
+    mProductions.addLast(CharType.v());
+  }
+
+  @Override
+  public void outAShortBaseType(AShortBaseType node) {
+    mProductions.addLast(ShortType.v());
+  }
+
+  @Override
+  public void outAIntBaseType(AIntBaseType node) {
+    mProductions.addLast(IntType.v());
+  }
+
+  @Override
+  public void outALongBaseType(ALongBaseType node) {
+    mProductions.addLast(LongType.v());
+  }
+
+  @Override
+  public void outAFloatBaseType(AFloatBaseType node) {
+    mProductions.addLast(FloatType.v());
+  }
+
+  @Override
+  public void outADoubleBaseType(ADoubleBaseType node) {
+    mProductions.addLast(DoubleType.v());
+  }
+
+  @Override
+  public void outANullBaseType(ANullBaseType node) {
+    mProductions.addLast(NullType.v());
+  }
+
+  @Override
+  public void outAClassNameBaseType(AClassNameBaseType node) {
+    String type = (String) mProductions.removeLast();
+    if (type.equals("int")) {
+      throw new RuntimeException();
+    }
+    mProductions.addLast(RefType.v(type));
+  }
+
+  /*
+   * method_body = {empty} semicolon | {full} l_brace declaration* statement* catch_clause* r_brace;
+   */
+
+  @Override
+  public void inAFullMethodBody(AFullMethodBody node) {
+    mLocals = new HashMap<String, Local>();
+    mLabelToStmtMap = new HashMap<Object, Unit>();
+    mLabelToPatchList = new HashMap<String, List>();
+  }
+
+  @Override
+  public void outAFullMethodBody(AFullMethodBody node) {
+    JimpleBody jBody = Jimple.v().newBody();
+
+    if (node.getCatchClause() != null) {
+      int size = node.getCatchClause().size();
+      for (int i = 0; i < size; i++) {
+        jBody.getTraps().addFirst((Trap) mProductions.removeLast());
+      }
+    }
+
+    if (node.getStatement() != null) {
+      int size = node.getStatement().size();
+      Unit lastStmt = null;
+      for (int i = 0; i < size; i++) {
+        Object o = mProductions.removeLast();
+        if (o instanceof Unit) {
+          jBody.getUnits().addFirst((Unit) o);
+          lastStmt = (Unit) o;
+        } else if (o instanceof String) {
+          if (lastStmt == null) {
+            throw new RuntimeException("impossible");
+          }
+          mLabelToStmtMap.put(o, lastStmt);
+        } else {
+          throw new RuntimeException("impossible");
+        }
+      }
+    }
+
+    if (node.getDeclaration() != null) {
+      int size = node.getDeclaration().size();
+      for (int i = 0; i < size; i++) {
+        List<Local> localList = (List<Local>) mProductions.removeLast();
+
+        jBody.getLocals().addAll(localList);
+      }
+    }
+
+    Iterator<String> it = mLabelToPatchList.keySet().iterator();
+    while (it.hasNext()) {
+      String label = it.next();
+      Unit target = mLabelToStmtMap.get(label);
+
+      Iterator patchIt = mLabelToPatchList.get(label).iterator();
+      while (patchIt.hasNext()) {
+        UnitBox box = (UnitBox) patchIt.next();
+        box.setUnit(target);
+      }
+    }
+
+    /*
+     * Iterator it = mLabelToStmtMap.keySet().iterator(); while(it.hasNext()) { String label = (String) it.next(); Unit
+     * target = (Unit) mLabelToStmtMap.get(label);
+     *
+     * List l = (List) mLabelToPatchList.get(label); if(l != null) { Iterator patchIt = l.iterator();
+     * while(patchIt.hasNext()) { UnitBox box = (UnitBox) patchIt.next(); box.setUnit(target); } } }
+     */
+
+    mProductions.addLast(jBody);
+  }
+
+  @Override
+  public void outANovoidType(ANovoidType node) {
+  }
+
+  /*
+   * parameter_list = {single} parameter | {multi} parameter comma parameter_list;
+   */
+
+  @Override
+  public void outASingleParameterList(ASingleParameterList node) {
+    List<Type> l = new ArrayList<Type>();
+    l.add((Type) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  @Override
+  public void outAMultiParameterList(AMultiParameterList node) {
+    List<Type> l = (List<Type>) mProductions.removeLast();
+    l.add(0, (Type) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  /*
+   * arg_list = {single} immediate | {multi} immediate comma arg_list;
+   */
+  @Override
+  public void outASingleArgList(ASingleArgList node) {
+    List<Value> l = new ArrayList<Value>();
+
+    l.add((Value) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  @Override
+  public void outAMultiArgList(AMultiArgList node) {
+    List<Value> l = (List<Value>) mProductions.removeLast();
+    l.add(0, (Value) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  /*
+   * class_name_list = {class_name_single} class_name | {class_name_multi} class_name comma class_name_list;
+   */
+
+  @Override
+  public void outAClassNameSingleClassNameList(AClassNameSingleClassNameList node) {
+    List<String> l = new ArrayList<String>();
+    l.add((String) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  @Override
+  public void outAClassNameMultiClassNameList(AClassNameMultiClassNameList node) {
+    List<String> l = (List<String>) mProductions.removeLast();
+    l.add(0, (String) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  /*
+   * file_type = {class} [theclass]:class | {interface} interface;
+   */
+
+  @Override
+  public void outAClassFileType(AClassFileType node) {
+    mProductions.addLast("class");
+  }
+
+  @Override
+  public void outAInterfaceFileType(AInterfaceFileType node) {
+    mProductions.addLast("interface");
+  }
+
+  /*
+   * catch_clause = catch [name]:class_name from [from_label]:label_name to [to_label]:label_name with
+   * [with_label]:label_name semicolon;
+   */
+
+  // public void caseACatchClause(ACatchClause node){}
+
+  @Override
+  public void outACatchClause(ACatchClause node) {
+    String exceptionName;
+    UnitBox withUnit, fromUnit, toUnit;
+
+    withUnit = Jimple.v().newStmtBox(null);
+    addBoxToPatch((String) mProductions.removeLast(), withUnit);
+
+    toUnit = Jimple.v().newStmtBox(null);
+    addBoxToPatch((String) mProductions.removeLast(), toUnit);
+
+    fromUnit = Jimple.v().newStmtBox(null);
+    addBoxToPatch((String) mProductions.removeLast(), fromUnit);
+
+    exceptionName = (String) mProductions.removeLast();
+
+    Trap trap = Jimple.v().newTrap(mResolver.makeClassRef(exceptionName), fromUnit, toUnit, withUnit);
+    mProductions.addLast(trap);
+  }
+
+  /*
+   * declaration = jimple_type local_name_list semicolon;
+   */
+
+  @Override
+  public void outADeclaration(ADeclaration node) {
+    List localNameList = (List) mProductions.removeLast();
+    Type type = (Type) mProductions.removeLast();
+    Iterator it = localNameList.iterator();
+    List<Local> localList = new ArrayList<Local>();
+
+    while (it.hasNext()) {
+      Local l = Jimple.v().newLocal((String) it.next(), type);
+      mLocals.put(l.getName(), l);
+      localList.add(l);
+    }
+    mProductions.addLast(localList);
+  }
+
+  /*
+   * jimple_type = {unknown} unknown | {nonvoid} nonvoid_type;
+   */
+  @Override
+  public void outAUnknownJimpleType(AUnknownJimpleType node) {
+    mProductions.addLast(UnknownType.v());
+  }
+
+  /*
+   * local_name_list = {single} local_name | {multi} local_name comma local_name_list;
+   */
+
+  @Override
+  public void outASingleLocalNameList(ASingleLocalNameList node) {
+    List<String> l = new ArrayList<String>();
+    l.add((String) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  @Override
+  public void outAMultiLocalNameList(AMultiLocalNameList node) {
+    List<String> l = (List<String>) mProductions.removeLast();
+    l.add(0, (String) mProductions.removeLast());
+    mProductions.addLast(l);
+  }
+
+  /*
+   * statement = {label} label_name colon | {breakpoint} breakpoint semicolon | {entermonitor} entermonitor immediate
+   * semicolon | {exitmonitor} exitmonitor immediate semicolon | {switch} switch l_paren immediate r_paren l_brace case_stmt+
+   * r_brace semicolon | {identity} local_name colon_equals at_identifier type semicolon | {identity_no_type} local_name
+   * colon_equals at_identifier semicolon | {assign} variable equals expression semicolon | {if} if bool_expr goto_stmt |
+   * {goto} goto_stmt | {nop} nop semicolon | {ret} ret immediate? semicolon | {return} return immediate? semicolon | {throw}
+   * throw immediate semicolon | {invoke} invoke_expr semicolon;
+   */
+
+  @Override
+  public void outALabelStatement(ALabelStatement node) {
+  }
+
+  @Override
+  public void outABreakpointStatement(ABreakpointStatement node) {
+    Unit u = Jimple.v().newBreakpointStmt();
+    mProductions.addLast(u);
+  }
+
+  @Override
+  public void outAEntermonitorStatement(AEntermonitorStatement node) {
+    Value op = (Value) mProductions.removeLast();
+
+    Unit u = Jimple.v().newEnterMonitorStmt(op);
+    mProductions.addLast(u);
+  }
+
+  @Override
+  public void outAExitmonitorStatement(AExitmonitorStatement node) {
+    Value op = (Value) mProductions.removeLast();
+
+    Unit u = Jimple.v().newExitMonitorStmt(op);
+    mProductions.addLast(u);
+  }
+
+  /*
+   * case_label = {constant} case minus? integer_constant | {default} default;
+   */
+  /*
+   * case_stmt = case_label colon goto_stmt;
+   */
+  @Override
+  public void outACaseStmt(ACaseStmt node) {
+    String labelName = (String) mProductions.removeLast();
+    UnitBox box = Jimple.v().newStmtBox(null);
+
+    addBoxToPatch(labelName, box);
+
+    Value labelValue = null;
+    if (node.getCaseLabel() instanceof AConstantCaseLabel) {
+      labelValue = (Value) mProductions.removeLast();
+    }
+
+    // if labelValue == null, this is the default label.
+    if (labelValue == null) {
+      mProductions.addLast(box);
+    } else {
+      Object[] valueTargetPair = new Object[2];
+      valueTargetPair[0] = labelValue;
+      valueTargetPair[1] = box;
+      mProductions.addLast(valueTargetPair);
+    }
+  }
+
+  @Override
+  public void outATableswitchStatement(ATableswitchStatement node) {
+    List<UnitBox> targets = new ArrayList<UnitBox>();
+    UnitBox defaultTarget = null;
+
+    int lowIndex = 0, highIndex = 0;
+
+    if (node.getCaseStmt() != null) {
+      int size = node.getCaseStmt().size();
+
+      for (int i = 0; i < size; i++) {
+        Object valueTargetPair = mProductions.removeLast();
+        if (valueTargetPair instanceof UnitBox) {
+          if (defaultTarget != null) {
+            throw new RuntimeException("error: can't ;have more than 1 default stmt");
+          }
+
+          defaultTarget = (UnitBox) valueTargetPair;
+        } else {
+          Object[] pair = (Object[]) valueTargetPair;
+
+          if ((i == 0 && defaultTarget == null) || (i == 1 && defaultTarget != null)) {
+            highIndex = ((IntConstant) pair[0]).value;
+          }
+          if (i == (size - 1)) {
+            lowIndex = ((IntConstant) pair[0]).value;
+          }
+
+          targets.add(0, (UnitBox) pair[1]);
+        }
+      }
+    } else {
+      throw new RuntimeException("error: switch stmt has no case stmts");
+    }
+
+    Value key = (Value) mProductions.removeLast();
+    Unit switchStmt = Jimple.v().newTableSwitchStmt(key, lowIndex, highIndex, targets, defaultTarget);
+
+    mProductions.addLast(switchStmt);
+  }
+
+  @Override
+  public void outALookupswitchStatement(ALookupswitchStatement node) {
+    List<IntConstant> lookupValues = new ArrayList<IntConstant>();
+    List<UnitBox> targets = new ArrayList<UnitBox>();
+    UnitBox defaultTarget = null;
+
+    if (node.getCaseStmt() != null) {
+      int size = node.getCaseStmt().size();
+
+      for (int i = 0; i < size; i++) {
+        Object valueTargetPair = mProductions.removeLast();
+        if (valueTargetPair instanceof UnitBox) {
+          if (defaultTarget != null) {
+            throw new RuntimeException("error: can't ;have more than 1 default stmt");
+          }
+
+          defaultTarget = (UnitBox) valueTargetPair;
+        } else {
+          Object[] pair = (Object[]) valueTargetPair;
+
+          lookupValues.add(0, (IntConstant) pair[0]);
+          targets.add(0, (UnitBox) pair[1]);
+        }
+      }
+    } else {
+      throw new RuntimeException("error: switch stmt has no case stmts");
+    }
+
+    Value key = (Value) mProductions.removeLast();
+    Unit switchStmt = Jimple.v().newLookupSwitchStmt(key, lookupValues, targets, defaultTarget);
+
+    mProductions.addLast(switchStmt);
+  }
+
+  @Override
+  public void outAIdentityStatement(AIdentityStatement node) {
+    Type identityRefType = (Type) mProductions.removeLast();
+    String atClause = (String) mProductions.removeLast();
+    Value local = mLocals.get(mProductions.removeLast()); // the local ref
+    // from it's
+    // identifier
+
+    Value ref = null;
+    if (atClause.startsWith("@this")) {
+      ref = Jimple.v().newThisRef((RefType) identityRefType);
+    } else if (atClause.startsWith("@parameter")) {
+      int index = Integer.parseInt(atClause.substring(10, atClause.length() - 1));
+
+      ref = Jimple.v().newParameterRef(identityRefType, index);
+    } else {
+      throw new RuntimeException("shouldn't @caughtexception be handled by outAIdentityNoTypeStatement: got" + atClause);
+    }
+
+    Unit u = Jimple.v().newIdentityStmt(local, ref);
+    mProductions.addLast(u);
+  }
+
+  @Override
+  public void outAIdentityNoTypeStatement(AIdentityNoTypeStatement node) {
+    mProductions.removeLast(); // get rid of @caughtexception string
+    // presently on top of the stack
+    Value local = mLocals.get(mProductions.removeLast()); // the local ref
+    // from it's
+    // identifier
+
+    Unit u = Jimple.v().newIdentityStmt(local, Jimple.v().newCaughtExceptionRef());
+    mProductions.addLast(u);
+  }
+
+  @Override
+  public void outAAssignStatement(AAssignStatement node) {
+    Object removeLast = mProductions.removeLast();
+    Value rvalue = (Value) removeLast;
+    Value variable = (Value) mProductions.removeLast();
+
+    Unit u = Jimple.v().newAssignStmt(variable, rvalue);
+    mProductions.addLast(u);
+  }
+
+  @Override
+  public void outAIfStatement(AIfStatement node) {
+    String targetLabel = (String) mProductions.removeLast();
+    Value condition = (Value) mProductions.removeLast();
+
+    UnitBox box = Jimple.v().newStmtBox(null);
+    Unit u = Jimple.v().newIfStmt(condition, box);
+
+    addBoxToPatch(targetLabel, box);
+
+    mProductions.addLast(u);
+  }
+
+  @Override
+  public void outAReturnStatement(AReturnStatement node) {
+    Immediate v;
+    Stmt s = null;
+    if (node.getImmediate() != null) {
+      v = (Immediate) mProductions.removeLast();
+      s = Jimple.v().newReturnStmt(v);
+    } else {
+      s = Jimple.v().newReturnVoidStmt();
+    }
+
+    mProductions.addLast(s);
+  }
+
+  @Override
+  public void outAGotoStatement(AGotoStatement node) {
+    String targetLabel = (String) mProductions.removeLast();
+
+    UnitBox box = Jimple.v().newStmtBox(null);
+    Unit branch = Jimple.v().newGotoStmt(box);
+
+    addBoxToPatch(targetLabel, box);
+
+    mProductions.addLast(branch);
+  }
+
+  @Override
+  public void outANopStatement(ANopStatement node) {
+    Unit u = Jimple.v().newNopStmt();
+    mProductions.addLast(u);
+  }
+
+  @Override
+  public void outARetStatement(ARetStatement node) {
+    throw new RuntimeException("ret not yet implemented.");
+  }
+
+  @Override
+  public void outAThrowStatement(AThrowStatement node) {
+    Value op = (Value) mProductions.removeLast();
+
+    Unit u = Jimple.v().newThrowStmt(op);
+    mProductions.addLast(u);
+  }
+
+  @Override
+  public void outAInvokeStatement(AInvokeStatement node) {
+    Value op = (Value) mProductions.removeLast();
+
+    Unit u = Jimple.v().newInvokeStmt(op);
+
+    mProductions.addLast(u);
+  }
+
+  /*
+   * case_label = {constant} case minus? integer_constant | {default} default;
+   */
+  @Override
+  public void outAConstantCaseLabel(AConstantCaseLabel node) {
+    String s = (String) mProductions.removeLast();
+    int sign = 1;
+    if (node.getMinus() != null) {
+      sign = -1;
+    }
+
+    if (s.endsWith("L")) {
+      mProductions.addLast(LongConstant.v(sign * Long.parseLong(s.substring(0, s.length() - 1))));
+    } else if (s.endsWith("B")) {
+      mProductions.addLast(ByteConstant.v(sign * Integer.parseInt(s.substring(0, s.length() - 1))));
+    } else if (s.endsWith("S")) {
+      mProductions.addLast(ShortConstant.v(sign * Integer.parseInt(s.substring(0, s.length() - 1))));
+    } else if (s.endsWith("C")) {
+      mProductions.addLast(CharConstant.v(sign * Integer.parseInt(s.substring(0, s.length() - 1))));
+    } else if (s.equals("2147483648")) {
+      mProductions.addLast(IntConstant.v(sign * Integer.MIN_VALUE));
+    } else {
+      mProductions.addLast(IntConstant.v(sign * Integer.parseInt(s)));
+    }
+  }
+
+  /*
+   * immediate = {local} local_name | {constant} constant;
+   */
+
+  @Override
+  public void outALocalImmediate(ALocalImmediate node) {
+    String local = (String) mProductions.removeLast();
+
+    Local l = mLocals.get(local);
+    if (l == null) {
+      throw new RuntimeException("did not find local: " + local);
+    }
+    mProductions.addLast(l);
+  }
+
+  /*
+   * constant = {integer} minus? integer_constant | {float} minus? float_constant | {string} string_constant | {null} null;
+   */
+
+  @Override
+  public void outANullConstant(ANullConstant node) {
+    mProductions.addLast(NullConstant.v());
+  }
+
+  @Override
+  public void outAIntegerConstant(AIntegerConstant node) {
+    String s = (String) mProductions.removeLast();
+
+    StringBuffer buf = new StringBuffer();
+    if (node.getMinus() != null) {
+      buf.append('-');
+    }
+    buf.append(s);
+
+    s = buf.toString();
+    if (s.endsWith("L")) {
+      mProductions.addLast(LongConstant.v(Long.parseLong(s.substring(0, s.length() - 1))));
+    } else if (s.endsWith("B")) {
+      mProductions.addLast(ByteConstant.v(Integer.parseInt(s.substring(0, s.length() - 1))));
+    } else if (s.endsWith("S")) {
+      mProductions.addLast(ShortConstant.v(Integer.parseInt(s.substring(0, s.length() - 1))));
+    } else if (s.endsWith("C")) {
+      mProductions.addLast(CharConstant.v(Integer.parseInt(s.substring(0, s.length() - 1))));
+    } else if (s.equals("2147483648")) {
+      mProductions.addLast(IntConstant.v(Integer.MIN_VALUE));
+    } else {
+      mProductions.addLast(IntConstant.v(Integer.parseInt(s)));
+    }
+  }
+
+  @Override
+  public void outABoolTrueConstant(ABoolTrueConstant node) {
+    BooleanConstant b = BooleanConstant.v(true);
+    mProductions.addLast(b);
+  }
+
+  @Override
+  public void outABoolFalseConstant(ABoolFalseConstant node) {
+    BooleanConstant b = BooleanConstant.v(false);
+    mProductions.addLast(b);
+  }
+
+  @Override
+  public void outAMethodhandlefieldConstant(AMethodhandlefieldConstant node) {
+    SootFieldRef fieldRef = (AbstractSootFieldRef) mProductions.removeLast();
+    String kind = (String) mProductions.removeLast();
+    mProductions.addLast(MethodHandle.v(fieldRef, Kind.valueOf(kind).getValue()));
+
+  }
+
+  @Override
+  public void outAMethodhandlemethodConstant(AMethodhandlemethodConstant node) {
+    PMethodSignature method = node.getMethod();
+    method.apply(this);
+
+  }
+
+  @Override
+  public void outAStringConstant(AStringConstant node) {
+    String s = (String) mProductions.removeLast();
+    mProductions.addLast(StringConstant.v(s));
+    /*
+     * try { String t = StringTools.getUnEscapedStringOf(s);
+     *
+     * mProductions.push(StringConstant.v(t)); } catch(RuntimeException e) { logger.debug(""+s); throw e; }
+     */
+  }
+
+  @Override
+  public void outAClzzConstant(AClzzConstant node) {
+    String s = (String) mProductions.removeLast();
+    mProductions.addLast(ClassConstant.v(s));
+  }
+
+  /* ('#' (('-'? 'Infinity') | 'NaN') ('f' | 'F')? ) ; */
+  @Override
+  public void outAFloatConstant(AFloatConstant node) {
+    String s = (String) mProductions.removeLast();
+
+    boolean isDouble = true;
+    float value = 0;
+    double dvalue = 0;
+
+    if (s.endsWith("f") || s.endsWith("F")) {
+      isDouble = false;
+    }
+
+    if (s.charAt(0) == '#') {
+      if (s.charAt(1) == '-') {
+        if (isDouble) {
+          dvalue = Double.NEGATIVE_INFINITY;
+        } else {
+          value = Float.NEGATIVE_INFINITY;
+        }
+      } else if (s.charAt(1) == 'I') {
+        if (isDouble) {
+          dvalue = Double.POSITIVE_INFINITY;
+        } else {
+          value = Float.POSITIVE_INFINITY;
+        }
+      } else {
+        if (isDouble) {
+          dvalue = Double.NaN;
+        } else {
+          value = Float.NaN;
+        }
+      }
+    } else {
+      StringBuffer buf = new StringBuffer();
+      if (node.getMinus() != null) {
+        buf.append('-');
+      }
+      buf.append(s);
+      s = buf.toString();
+
+      if (isDouble) {
+        dvalue = Double.parseDouble(s);
+      } else {
+        value = Float.parseFloat(s);
+      }
+    }
+
+    Object res;
+    if (isDouble) {
+      res = DoubleConstant.v(dvalue);
+    } else {
+      res = FloatConstant.v(value);
+    }
+
+    mProductions.addLast(res);
+  }
+
+  /*
+   * binop_expr = [left]:immediate binop [right]:immediate;
+   */
+
+  @Override
+  public void outABinopExpr(ABinopExpr node) {
+    Value right = (Value) mProductions.removeLast();
+    BinopExpr expr = (BinopExpr) mProductions.removeLast();
+    Value left = (Value) mProductions.removeLast();
+
+    expr.setOp1(left);
+    expr.setOp2(right);
+    mProductions.addLast(expr);
+  }
+
+  @Override
+  public void outABinopBoolExpr(ABinopBoolExpr node) {
+  }
+
+  @Override
+  public void outAUnopExpression(AUnopExpression node) {
+  }
+
+  /*
+   * binop = {and} and | {or} or | {xor} xor | {mod} mod |
+   *
+   * {cmp} cmp | {cmpg} cmpg | {cmpl} cmpl | {cmpeq} cmpeq |
+   *
+   * {cmpne} cmpne | {cmpgt} cmpgt | {cmpge} cmpge | {cmplt} cmplt |
+   *
+   * {cmple} cmple | {shl} shl | {shr} shr | {ushr} ushr |
+   *
+   * {plus} plus | {minus} minus | {mult} mult | {div} div;
+   */
+
+  @Override
+  public void outAAndBinop(AAndBinop node) {
+    mProductions.addLast(Jimple.v().newAndExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAOrBinop(AOrBinop node) {
+    mProductions.addLast(Jimple.v().newOrExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAXorBinop(AXorBinop node) {
+    mProductions.addLast(Jimple.v().newXorExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAModBinop(AModBinop node) {
+    mProductions.addLast(Jimple.v().newRemExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmpBinop(ACmpBinop node) {
+    mProductions.addLast(Jimple.v().newCmpExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmpgBinop(ACmpgBinop node) {
+    mProductions.addLast(Jimple.v().newCmpgExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmplBinop(ACmplBinop node) {
+    mProductions.addLast(Jimple.v().newCmplExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmpeqBinop(ACmpeqBinop node) {
+    mProductions.addLast(Jimple.v().newEqExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmpneBinop(ACmpneBinop node) {
+    mProductions.addLast(Jimple.v().newNeExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmpgtBinop(ACmpgtBinop node) {
+    mProductions.addLast(Jimple.v().newGtExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmpgeBinop(ACmpgeBinop node) {
+    mProductions.addLast(Jimple.v().newGeExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmpltBinop(ACmpltBinop node) {
+    mProductions.addLast(Jimple.v().newLtExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outACmpleBinop(ACmpleBinop node) {
+    mProductions.addLast(Jimple.v().newLeExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAShlBinop(AShlBinop node) {
+    mProductions.addLast(Jimple.v().newShlExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAShrBinop(AShrBinop node) {
+    mProductions.addLast(Jimple.v().newShrExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAUshrBinop(AUshrBinop node) {
+    mProductions.addLast(Jimple.v().newUshrExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAPlusBinop(APlusBinop node) {
+    mProductions.addLast(Jimple.v().newAddExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAMinusBinop(AMinusBinop node) {
+    mProductions.addLast(Jimple.v().newSubExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outAMultBinop(AMultBinop node) {
+    mProductions.addLast(Jimple.v().newMulExpr(mValue, mValue));
+  }
+
+  @Override
+  public void outADivBinop(ADivBinop node) {
+    mProductions.addLast(Jimple.v().newDivExpr(mValue, mValue));
+  }
+
+  /*
+   * throws_clause = throws class_name_list;
+   */
+  @Override
+  public void outAThrowsClause(AThrowsClause node) {
+    List l = (List) mProductions.removeLast();
+
+    Iterator it = l.iterator();
+    List<SootClass> exceptionClasses = new ArrayList<SootClass>(l.size());
+
+    while (it.hasNext()) {
+      String className = (String) it.next();
+
+      exceptionClasses.add(mResolver.makeClassRef(className));
+    }
+
+    mProductions.addLast(exceptionClasses);
+  }
+
+  /*
+   * variable = {reference} reference | {local} local_name;
+   */
+
+  @Override
+  public void outALocalVariable(ALocalVariable node) {
+    String local = (String) mProductions.removeLast();
+
+    Local l = mLocals.get(local);
+    if (l == null) {
+      throw new RuntimeException("did not find local: " + local);
+    }
+    mProductions.addLast(l);
+  }
+
+  /*
+   * public void caseAReferenceVariable(AReferenceVariable node) { }
+   */
+
+  /*
+   * array_ref = identifier fixed_array_descriptor;
+   */
+
+  @Override
+  public void outAArrayReference(AArrayReference node) {
+    Value immediate = (Value) mProductions.removeLast();
+    String identifier = (String) mProductions.removeLast();
+
+    Local l = mLocals.get(identifier);
+    if (l == null) {
+      throw new RuntimeException("did not find local: " + identifier);
+    }
+
+    mProductions.addLast(Jimple.v().newArrayRef(l, immediate));
+
+  }
+
+  /*
+   * field_ref = {local} local_name dot field_signature | {sig} field_signature;
+   */
+
+  @Override
+  public void outALocalFieldRef(ALocalFieldRef node) {
+    SootFieldRef field = (SootFieldRef) mProductions.removeLast();
+
+    String local = (String) mProductions.removeLast();
+
+    Local l = mLocals.get(local);
+    if (l == null) {
+      throw new RuntimeException("did not find local: " + local);
+    }
+
+    mProductions.addLast(Jimple.v().newInstanceFieldRef(l, field));
+  }
+
+  @Override
+  public void outASigFieldRef(ASigFieldRef node) {
+    SootFieldRef field = (SootFieldRef) mProductions.removeLast();
+    field = Scene.v().makeFieldRef(field.declaringClass(), field.name(), field.type(), true);
+    mProductions.addLast(Jimple.v().newStaticFieldRef(field));
+  }
+
+  /*
+   * field_signature = cmplt [class_name]:class_name [first]:colon type [field_name]:name cmpgt;
+   */
+
+  @Override
+  public void outAFieldSignature(AFieldSignature node) {
+    String className, fieldName;
+    Type t;
+
+    fieldName = (String) mProductions.removeLast();
+    t = (Type) mProductions.removeLast();
+    className = (String) mProductions.removeLast();
+
+    SootClass cl = mResolver.makeClassRef(className);
+    SootFieldRef field = Scene.v().makeFieldRef(cl, fieldName, t, false);
+
+    mProductions.addLast(field);
+  }
+
+  /*
+   * expression = {new} new_expr | {cast} l_paren nonvoid_type r_paren local_name | {instanceof} immediate instanceof
+   * nonvoid_type | {invoke} invoke_expr |
+   *
+   * {reference} reference | {binop} binop_expr | {unop} unop_expr | {immediate} immediate;
+   */
+  @Override
+  public void outACastExpression(ACastExpression node) {
+    Value val = (Value) mProductions.removeLast();
+
+    Type type = (Type) mProductions.removeLast();
+    mProductions.addLast(Jimple.v().newCastExpr(val, type));
+  }
+
+  @Override
+  public void outAInstanceofExpression(AInstanceofExpression node) {
+    Type nonvoidType = (Type) mProductions.removeLast();
+    Value immediate = (Value) mProductions.removeLast();
+    mProductions.addLast(Jimple.v().newInstanceOfExpr(immediate, nonvoidType));
+
+  }
+
+  /*
+   * unop_expr = unop immediate;
+   */
+  @Override
+  public void outAUnopExpr(AUnopExpr node) {
+    Value v = (Value) mProductions.removeLast();
+    UnopExpr expr = (UnopExpr) mProductions.removeLast();
+    expr.setOp(v);
+    mProductions.addLast(expr);
+  }
+
+  /*
+   * unop = {lengthof} lengthof | {neg} neg;
+   */
+  @Override
+  public void outALengthofUnop(ALengthofUnop node) {
+    mProductions.addLast(Jimple.v().newLengthExpr(mValue));
+  }
+
+  @Override
+  public void outANegUnop(ANegUnop node) {
+    mProductions.addLast(Jimple.v().newNegExpr(mValue));
+  }
+
+  /*
+   * invoke_expr = {nonstatic} nonstatic_invoke local_name dot method_signature l_paren arg_list? r_paren | {static}
+   * staticinvoke method_signature l_paren arg_list? r_paren;
+   */
+
+  @Override
+  public void outANonstaticInvokeExpr(ANonstaticInvokeExpr node) {
+    List args;
+
+    if (node.getArgList() != null) {
+      args = (List) mProductions.removeLast();
+    } else {
+      args = new ArrayList();
+    }
+
+    SootMethodRef method = (SootMethodRef) mProductions.removeLast();
+
+    String local = (String) mProductions.removeLast();
+
+    Local l = mLocals.get(local);
+    if (l == null) {
+      throw new RuntimeException("did not find local: " + local);
+    }
+
+    Node invokeType = node.getNonstaticInvoke();
+    Expr invokeExpr;
+
+    if (invokeType instanceof ASpecialNonstaticInvoke) {
+      invokeExpr = Jimple.v().newSpecialInvokeExpr(l, method, args);
+    } else if (invokeType instanceof AVirtualNonstaticInvoke) {
+      invokeExpr = Jimple.v().newVirtualInvokeExpr(l, method, args);
+    } else {
+      if (debug) {
+        if (!(invokeType instanceof AInterfaceNonstaticInvoke)) {
+          throw new RuntimeException("expected interface invoke.");
+        }
+      }
+      invokeExpr = Jimple.v().newInterfaceInvokeExpr(l, method, args);
+    }
+
+    mProductions.addLast(invokeExpr);
+
+  }
+
+  @Override
+  public void outAStaticInvokeExpr(AStaticInvokeExpr node) {
+    List args;
+
+    if (node.getArgList() != null) {
+      args = (List) mProductions.removeLast();
+    } else {
+      args = new ArrayList();
+    }
+
+    SootMethodRef method = (SootMethodRef) mProductions.removeLast();
+    method = Scene.v().makeMethodRef(method.declaringClass(), method.name(), method.parameterTypes(), method.returnType(),
+        true);
+
+    mProductions.addLast(Jimple.v().newStaticInvokeExpr(method, args));
+  }
+
+  @Override
+  public void outADynamicInvokeExpr(ADynamicInvokeExpr node) {
+    List<Value> bsmArgs;
+    if (node.getStaticargs() != null) {
+      bsmArgs = (List) mProductions.removeLast();
+    } else {
+      bsmArgs = Collections.emptyList();
+    }
+
+    SootMethodRef bsmMethodRef = (SootMethodRef) mProductions.removeLast();
+
+    List<Value> dynArgs;
+    if (node.getDynargs() != null) {
+      dynArgs = (List) mProductions.removeLast();
+    } else {
+      dynArgs = Collections.emptyList();
+    }
+
+    SootMethodRef dynMethodRef = (SootMethodRef) mProductions.removeLast();
+
+    mProductions.addLast(Jimple.v().newDynamicInvokeExpr(bsmMethodRef, bsmArgs, dynMethodRef, dynArgs));
+  }
+
+  @Override
+  public void outAUnnamedMethodSignature(AUnnamedMethodSignature node) {
+    String className, methodName;
+    List parameterList = new ArrayList();
+    if (node.getParameterList() != null) {
+      parameterList = (List) mProductions.removeLast();
+    }
+
+    Type type = (Type) mProductions.removeLast();
+    String name = (String) mProductions.removeLast();
+
+    SootClass sootClass = mResolver.makeClassRef(SootClass.INVOKEDYNAMIC_DUMMY_CLASS_NAME);
+    SootMethodRef sootMethod = Scene.v().makeMethodRef(sootClass, name, parameterList, type, false);
+
+    mProductions.addLast(sootMethod);
+  }
+
+  /*
+   * method_signature = cmplt [class_name]:class_name [first]:colon type [method_name]:name l_paren parameter_list? r_paren
+   * cmpgt;
+   */
+  @Override
+  public void outAMethodSignature(AMethodSignature node) {
+    String className, methodName;
+    List parameterList = new ArrayList();
+    if (node.getParameterList() != null) {
+      parameterList = (List) mProductions.removeLast();
+    }
+
+    methodName = (String) mProductions.removeLast();
+    Type type = (Type) mProductions.removeLast();
+    className = (String) mProductions.removeLast();
+
+    SootClass sootClass = mResolver.makeClassRef(className);
+    SootMethodRef sootMethod = Scene.v().makeMethodRef(sootClass, methodName, parameterList, type, false);
+
+    mProductions.addLast(sootMethod);
+  }
+
+  /*
+   * new_expr = {simple} new base_type | {array} newarray l_paren nonvoid_type r_paren fixed_array_descriptor | {multi}
+   * newmultiarray l_paren base_type r_paren array_descriptor+;
+   */
+  @Override
+  public void outASimpleNewExpr(ASimpleNewExpr node) {
+    mProductions.addLast(Jimple.v().newNewExpr((RefType) mProductions.removeLast()));
+  }
+
+  @Override
+  public void outAArrayNewExpr(AArrayNewExpr node) {
+    Value size = (Value) mProductions.removeLast();
+    Type type = (Type) mProductions.removeLast();
+    mProductions.addLast(Jimple.v().newNewArrayExpr(type, size));
+  }
+
+  @Override
+  public void outAMultiNewExpr(AMultiNewExpr node) {
+
+    LinkedList arrayDesc = node.getArrayDescriptor();
+
+    int descCnt = arrayDesc.size();
+    List sizes = new LinkedList();
+
+    Iterator it = arrayDesc.iterator();
+    while (it.hasNext()) {
+      AArrayDescriptor o = (AArrayDescriptor) it.next();
+      if (o.getImmediate() != null) {
+        sizes.add(0, mProductions.removeLast());
+      } else {
+        break;
+      }
+    }
+
+    Type type = (Type) mProductions.removeLast();
+    ArrayType arrayType = ArrayType.v(type, descCnt);
+
+    mProductions.addLast(Jimple.v().newNewMultiArrayExpr(arrayType, sizes));
+  }
+
+  @Override
+  public void defaultCase(Node node) {
+    if (node instanceof TQuotedName || node instanceof TFullIdentifier || node instanceof TIdentifier
+        || node instanceof TStringConstant ||
+
+        node instanceof TIntegerConstant || node instanceof TFloatConstant || node instanceof TAtIdentifier
+
+    ) {
+      if (debug) {
+        logger.debug("Default case -pushing token:" + ((Token) node).getText());
+      }
+      String tokenString = ((Token) node).getText();
+      if (node instanceof TStringConstant || node instanceof TQuotedName) {
+        tokenString = tokenString.substring(1, tokenString.length() - 1);
+      } else if (node instanceof TFullIdentifier) {
+        tokenString = Scene.v().unescapeName(tokenString);
+      }
+
+      if (node instanceof TIdentifier || node instanceof TFullIdentifier || node instanceof TQuotedName
+          || node instanceof TStringConstant) {
+        try {
+          tokenString = StringTools.getUnEscapedStringOf(tokenString);
+
+        } catch (RuntimeException e) {
+          logger.debug("Invalid escaped string: " + tokenString);
+          // just used the unescaped string, better than nothing
+        }
+      }
+
+      mProductions.addLast(tokenString);
+    }
+  }
+
+  protected int processModifiers(List l) {
+    int modifier = 0;
+    Iterator it = l.iterator();
+
+    while (it.hasNext()) {
+      Object t = it.next();
+      if (t instanceof AAbstractModifier) {
+        modifier |= Modifier.ABSTRACT;
+      } else if (t instanceof AFinalModifier) {
+        modifier |= Modifier.FINAL;
+      } else if (t instanceof ANativeModifier) {
+        modifier |= Modifier.NATIVE;
+      } else if (t instanceof APublicModifier) {
+        modifier |= Modifier.PUBLIC;
+      } else if (t instanceof AProtectedModifier) {
+        modifier |= Modifier.PROTECTED;
+      } else if (t instanceof APrivateModifier) {
+        modifier |= Modifier.PRIVATE;
+      } else if (t instanceof AStaticModifier) {
+        modifier |= Modifier.STATIC;
+      } else if (t instanceof ASynchronizedModifier) {
+        modifier |= Modifier.SYNCHRONIZED;
+      } else if (t instanceof ATransientModifier) {
+        modifier |= Modifier.TRANSIENT;
+      } else if (t instanceof AVolatileModifier) {
+        modifier |= Modifier.VOLATILE;
+      } else if (t instanceof AStrictfpModifier) {
+        modifier |= Modifier.STRICTFP;
+      } else if (t instanceof AEnumModifier) {
+        modifier |= Modifier.ENUM;
+      } else if (t instanceof AAnnotationModifier) {
+        modifier |= Modifier.ANNOTATION;
+      } else {
+        throw new RuntimeException(
+            "Impossible: modifier unknown - Have you added a new modifier and not updated this file?");
+      }
+    }
+
+    return modifier;
+  }
+
+  private void addBoxToPatch(String aLabelName, UnitBox aUnitBox) {
+    List<UnitBox> patchList = mLabelToPatchList.get(aLabelName);
+    if (patchList == null) {
+      patchList = new ArrayList<UnitBox>();
+      mLabelToPatchList.put(aLabelName, patchList);
+    }
+
+    patchList.add(aUnitBox);
+  }
+
+}

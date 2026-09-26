@@ -1,0 +1,72 @@
+package soot.tagkit;
+
+/*-
+ * #%L
+ * Soot - a J*va Optimization Framework
+ * %%
+ * Copyright (C) 1997 - 2002 Raja Vallee-Rai
+ * %%
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as
+ * published by the Free Software Foundation, either version 2.1 of the
+ * License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Lesser Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Lesser Public
+ * License along with this program.  If not, see
+ * <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ * #L%
+ */
+
+/**
+ * This class represents a tag for byte-code offset of instructions that correspond to Jimple statements.
+ *
+ * @author Roman Manevich.
+ * @since October 3 2002 Initial creation.
+ */
+public class BytecodeOffsetTag implements Tag {
+
+  public static final String NAME = "BytecodeOffsetTag";
+  /**
+   * The index of the last byte-code instruction.
+   */
+  protected int offset;
+
+  /**
+   * Constructs a tag from the index offset.
+   */
+  public BytecodeOffsetTag(int offset) {
+    this.offset = offset;
+  }
+
+  @Override
+  public String getName() {
+    return NAME;
+  }
+
+  /**
+   * Returns the offset as an int.
+   */
+  public int getBytecodeOffset() {
+    return offset;
+  }
+
+  /**
+   * Returns the offset in a string.
+   */
+  @Override
+  public String toString() {
+    return String.valueOf(offset);
+  }
+
+  public static void set(Host host, int offset) {
+    // we cannot reuse an existing tag due to the offset being final
+    BytecodeOffsetTag bt = (BytecodeOffsetTag) host.getOrComputeTag(NAME, () -> new BytecodeOffsetTag(offset));
+    bt.offset = offset;
+
+  }
+}
