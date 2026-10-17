@@ -1,0 +1,116 @@
+/*-
+ * #%L
+ * Soot - a J*va Optimization Framework
+ * %%
+ * Copyright (C) 2012 Michael Markert, Frank Hartmann
+ * 
+ * (c) 2012 University of Luxembourg - Interdisciplinary Centre for
+ * Security Reliability and Trust (SnT) - All rights reserved
+ * Alexandre Bartel
+ * 
+ * %%
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as
+ * published by the Free Software Foundation, either version 2.1 of the
+ * License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Lesser Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Lesser Public
+ * License along with this program.  If not, see
+ * <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ * #L%
+ */
+
+package soot.dexpler.instructions;
+
+import com.android.tools.smali.dexlib2.Opcode;
+import com.android.tools.smali.dexlib2.iface.instruction.Instruction;
+import com.android.tools.smali.dexlib2.iface.instruction.ThreeRegisterInstruction;
+import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction23x;
+
+import soot.DoubleType;
+import soot.FloatType;
+import soot.Local;
+import soot.LongType;
+import soot.Type;
+import soot.dexpler.DexBody;
+import soot.dexpler.tags.DoubleOpTag;
+import soot.dexpler.tags.FloatOpTag;
+import soot.dexpler.tags.LongOpTag;
+import soot.jimple.AssignStmt;
+import soot.jimple.Expr;
+import soot.jimple.Jimple;
+
+public class CmpInstruction extends TaggedInstruction {
+
+  public CmpInstruction(Instruction instruction, int codeAdress) {
+    super(instruction, codeAdress);
+  }
+
+  @Override
+  public void jimplify(DexBody body) {
+    if (!(instruction instanceof Instruction23x)) {
+      throw new IllegalArgumentException("Expected Instruction23x but got: " + instruction.getClass());
+    }
+
+    Instruction23x cmpInstr = (Instruction23x) instruction;
+    int dest = cmpInstr.getRegisterA();
+
+    Local first = body.getRegisterLocal(cmpInstr.getRegisterB());
+    Local second = body.getRegisterLocal(cmpInstr.getRegisterC());
+
+    // Expr cmpExpr;
+    // Type type = null
+    Opcode opcode = instruction.getOpcode();
+    Expr cmpExpr = null;
+    Type type = null;
+    switch (opcode) {
+      case CMPL_DOUBLE:
+        setTag(DoubleOpTag.INSTANCE);
+        type = DoubleType.v();
+        cmpExpr = Jimple.v().newCmplExpr(first, second);
+        break;
+      case CMPL_FLOAT:
+        setTag(FloatOpTag.INSTANCE);
+        type = FloatType.v();
+        cmpExpr = Jimple.v().newCmplExpr(first, second);
+        break;
+      case CMPG_DOUBLE:
+        setTag(DoubleOpTag.INSTANCE);
+        type = DoubleType.v();
+        cmpExpr = Jimple.v().newCmpgExpr(first, second);
+        break;
+      case CMPG_FLOAT:
+        setTag(FloatOpTag.INSTANCE);
+        type = FloatType.v();
+        cmpExpr = Jimple.v().newCmpgExpr(first, second);
+        break;
+      case CMP_LONG:
+        setTag(LongOpTag.INSTANCE);
+        type = LongType.v();
+        cmpExpr = Jimple.v().newCmpExpr(first, second);
+        break;
+      default:
+        throw new RuntimeException("no opcode for CMP: " + opcode);
+    }
+
+    AssignStmt assign = Jimple.v().newAssignStmt(body.getRegisterLocal(dest), cmpExpr);
+    assign.addTag(getTag());
+
+    setUnit(assign);
+    addTags(assign);
+    body.add(assign);
+  }
+
+  @Override
+  boolean overridesRegister(int register) {
+    ThreeRegisterInstruction i = (ThreeRegisterInstruction) instruction;
+    int dest = i.getRegisterA();
+    return register == dest;
+  }
+
+}
